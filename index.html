@@ -1,0 +1,622 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style>
+<title>Separador de Boletos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: uma coluna de trabalho — entrada (arquivo + regra) em cima, resultado embaixo; linha de corte tracejada como na ficha de compensação */
+:root{
+  --bg:#f3f5f4; --paper:#ffffff; --ink:#15211e; --muted:#5d6b67; --line:#d5dcd9;
+  --accent:#0d6b5a; --accent-ink:#ffffff; --accent-soft:#e2f0ec;
+  --warn:#9a5b00; --warn-soft:#fbf0dc; --err:#b42318;
+  --display:"Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --body:"Instrument Sans", "Segoe UI", system-ui, sans-serif;
+  --mono:"JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0f1513; --paper:#161e1b; --ink:#e6eeeb; --muted:#94a39e; --line:#2b3733;
+  --accent:#4cc3a6; --accent-ink:#06231c; --accent-soft:#163029;
+  --warn:#f0b45a; --warn-soft:#2e2414; --err:#ff8a7d; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f1513; --paper:#161e1b; --ink:#e6eeeb; --muted:#94a39e; --line:#2b3733;
+  --accent:#4cc3a6; --accent-ink:#06231c; --accent-soft:#163029;
+  --warn:#f0b45a; --warn-soft:#2e2414; --err:#ff8a7d; color-scheme:dark}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:15px/1.55 var(--body);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:28px 56px}
+.wrap{max-width:880px;margin:0 auto;display:flex;flex-direction:column;gap:22px}
+header h1{font:700 clamp(28px,5vw,40px)/1.05 var(--display);letter-spacing:-.02em;margin:0;text-wrap:balance}
+header p{margin:8px 0 0;color:var(--muted);max-width:62ch}
+.lock{display:inline-flex;gap:6px;align-items:center;font-size:13px;color:var(--accent);margin-top:10px;font-weight:500}
+
+.panel{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:20px;display:flex;flex-direction:column;gap:16px;min-width:0}
+.panel h2{font:600 13px/1 var(--body);text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0}
+
+.drop{border:2px dashed var(--line);border-radius:8px;padding:26px 18px;text-align:center;cursor:pointer;position:relative;transition:border-color .15s,background .15s}
+.drop:hover,.drop.over,.drop:focus-within{border-color:var(--accent);background:var(--accent-soft)}
+.drop input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%}
+.drop strong{display:block;font:600 17px/1.3 var(--display)}
+.drop span{color:var(--muted);font-size:14px}
+.cut{display:flex;align-items:center;gap:8px;color:var(--muted);font:11px/1 var(--mono);text-transform:uppercase;letter-spacing:.06em}
+.cut::after{content:"";flex:1;border-top:1px dashed var(--line)}
+.filebar{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:baseline;font-size:14px}
+.filebar b{font-weight:600;word-break:break-all}
+.filebar .meta{color:var(--muted);font-family:var(--mono);font-size:13px}
+.progress{height:6px;background:var(--line);border-radius:3px;overflow:hidden}
+.progress i{display:block;height:100%;width:0;background:var(--accent);transition:width .1s}
+
+.modes{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px}
+.mode{position:relative}
+.mode input{position:absolute;opacity:0}
+.mode label{display:flex;flex-direction:column;gap:2px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;cursor:pointer;height:100%}
+.mode label b{font-weight:600;font-size:14px}
+.mode label small{color:var(--muted);font-size:12.5px;line-height:1.35}
+.mode input:checked + label{border-color:var(--accent);background:var(--accent-soft);box-shadow:inset 0 0 0 1px var(--accent)}
+.mode input:focus-visible + label{outline:2px solid var(--accent);outline-offset:2px}
+
+.custom{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end}
+.field{display:flex;flex-direction:column;gap:4px;min-width:0;flex:1 1 180px}
+.field.small{flex:0 1 120px}
+.field label{font-size:13px;color:var(--muted);font-weight:500}
+input[type=text],input[type=number],select{font:14px var(--body);color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px 10px;width:100%}
+input.mono{font-family:var(--mono);font-size:13px}
+input:focus-visible,select:focus-visible,button:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.check{display:flex;gap:8px;align-items:center;font-size:14px}
+.hint{font-size:13px;color:var(--muted);margin:0}
+.err{color:var(--err);font-size:13px}
+
+.summary{display:flex;flex-wrap:wrap;gap:10px 22px;align-items:center}
+.stat{display:flex;flex-direction:column}
+.stat b{font:700 24px/1.1 var(--display);font-variant-numeric:tabular-nums}
+.stat span{font-size:12.5px;color:var(--muted)}
+.actions{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+button{font:600 14px var(--body);border-radius:6px;padding:9px 14px;cursor:pointer;border:1px solid var(--line);background:var(--paper);color:var(--ink)}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+button:disabled{opacity:.5;cursor:not-allowed}
+button.link{border:0;background:none;padding:4px 6px;color:var(--accent)}
+
+.alert{background:var(--warn-soft);color:var(--warn);border-radius:6px;padding:10px 12px;font-size:14px}
+.tablebox{overflow-x:auto;border:1px solid var(--line);border-radius:8px}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600;background:var(--bg);cursor:pointer;user-select:none;white-space:nowrap}
+tr:last-child td{border-bottom:0}
+td.n{font-family:var(--mono);font-variant-numeric:tabular-nums;text-align:right;width:1%;white-space:nowrap}
+td.pages{font-family:var(--mono);font-size:12.5px;color:var(--muted);word-break:break-word}
+td.act{width:1%;white-space:nowrap}
+tr.unmatched td:first-child{color:var(--warn);font-weight:600}
+.example{opacity:.75}
+.tag{display:inline-block;font:500 11px/1 var(--mono);text-transform:uppercase;letter-spacing:.06em;padding:4px 6px;border-radius:4px;background:var(--accent-soft);color:var(--accent);margin-left:6px;vertical-align:middle}
+
+details{border-top:1px dashed var(--line);padding-top:12px}
+summary{cursor:pointer;font-weight:600;font-size:14px}
+.viewer{display:flex;flex-direction:column;gap:10px;margin-top:12px}
+.lines{font:12.5px/1.6 var(--mono);background:var(--bg);border:1px solid var(--line);border-radius:6px;max-height:340px;overflow:auto;padding:6px 0}
+.lines div{padding:0 12px;white-space:pre;cursor:pointer}
+.lines div:hover{background:var(--accent-soft)}
+.lines div em{font-style:normal;color:var(--muted);display:inline-block;width:3ch;margin-right:8px;text-align:right}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:8px;font-size:14px;max-width:calc(100% - 32px)}
+.tabs{display:flex;gap:6px;border-bottom:1px solid var(--line)}
+.tab{border:1px solid transparent;border-bottom:0;border-radius:8px 8px 0 0;background:none;padding:10px 16px;color:var(--muted);margin-bottom:-1px}
+.tab[aria-selected=true]{background:var(--paper);border-color:var(--line);color:var(--accent)}
+.tabpane{display:flex;flex-direction:column;gap:22px}
+.flist{list-style:none;margin:0;padding:0;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.flist li{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--line);background:var(--paper)}
+.flist li:last-child{border-bottom:0}
+.flist .idx{font:500 12.5px var(--mono);color:var(--muted);width:3ch;text-align:right;flex:none}
+.flist .nm{flex:1;min-width:0;word-break:break-all;font-weight:500}
+.flist .mt{font:12.5px var(--mono);color:var(--muted);white-space:nowrap}
+.flist .ctl{display:flex;gap:4px;flex:none}
+.flist .ctl button{padding:4px 9px;font-size:13px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <h1>Separador de Boletos</h1>
+    <p>Separe um PDF de boletos em vários arquivos ou junte vários PDFs em um só.</p>
+    <div class="lock">O arquivo é lido no seu navegador e não é enviado para nenhum servidor.</div>
+  </header>
+
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" id="tabbtn-sep" aria-selected="true" aria-controls="tab-sep">Separar boletos</button>
+    <button class="tab" role="tab" id="tabbtn-join" aria-selected="false" aria-controls="tab-join">Juntar PDFs</button>
+  </div>
+
+  <div class="tabpane" id="tab-sep" role="tabpanel" aria-labelledby="tabbtn-sep">
+  <p class="hint" style="margin:0">Envie um PDF com vários boletos (um por página), escolha a informação que define cada grupo e baixe um PDF por grupo, todos juntos num ZIP.</p>
+
+  <section class="panel" aria-labelledby="h-arq">
+    <h2 id="h-arq">1. Arquivo</h2>
+    <div class="drop" id="drop">
+      <input type="file" id="file" accept="application/pdf,.pdf" aria-label="Escolher arquivo PDF">
+      <strong>Arraste o PDF aqui ou clique para escolher</strong>
+      <span>Ex.: boletos.pdf</span>
+    </div>
+    <div id="fileinfo" hidden>
+      <div class="filebar"><b id="fname"></b><span class="meta" id="fmeta"></span></div>
+      <div class="progress" id="prog" hidden><i id="progbar"></i></div>
+    </div>
+    <div class="err" id="fileerr" hidden></div>
+  </section>
+
+  <section class="panel" aria-labelledby="h-regra">
+    <h2 id="h-regra">2. Separar por</h2>
+    <div class="modes" role="radiogroup" aria-label="Critério de separação">
+      <div class="mode"><input type="radio" name="mode" id="m-cidade" value="cidade" checked><label for="m-cidade"><b>Cidade do pagador</b><small>Linha “Bairro - Cidade / UF”</small></label></div>
+      <div class="mode"><input type="radio" name="mode" id="m-uf" value="uf"><label for="m-uf"><b>Estado (UF)</b><small>SP, MG, PR…</small></label></div>
+      <div class="mode"><input type="radio" name="mode" id="m-pagador" value="pagador"><label for="m-pagador"><b>Pagador</b><small>Nome antes do CNPJ/CPF</small></label></div>
+      <div class="mode"><input type="radio" name="mode" id="m-venc" value="vencimento"><label for="m-venc"><b>Vencimento</b><small>Data de vencimento</small></label></div>
+      <div class="mode"><input type="radio" name="mode" id="m-rotulo" value="rotulo"><label for="m-rotulo"><b>Linha abaixo de um texto</b><small>Você escolhe o rótulo</small></label></div>
+      <div class="mode"><input type="radio" name="mode" id="m-regex" value="regex"><label for="m-regex"><b>Padrão avançado</b><small>Expressão regular</small></label></div>
+    </div>
+
+    <div class="custom" id="opt-rotulo" hidden>
+      <div class="field"><label for="rot-label">Texto do rótulo</label><input type="text" id="rot-label" value="Pagador" placeholder="Ex.: Pagador"></div>
+      <div class="field small"><label for="rot-off">Linhas abaixo</label><input type="number" id="rot-off" min="0" max="10" value="2"></div>
+      <div class="field small"><label for="rot-occ">Ocorrência</label><select id="rot-occ"><option value="last">Última</option><option value="first">Primeira</option></select></div>
+      <label class="check"><input type="checkbox" id="rot-col" checked> Só a primeira coluna</label>
+      <p class="hint" style="flex-basis:100%">0 = a própria linha do rótulo (o texto depois dele). Dica: abra “Ver o texto de uma página” abaixo e clique numa linha para usá-la como rótulo.</p>
+    </div>
+
+    <div class="custom" id="opt-regex" hidden>
+      <div class="field"><label for="rx">Expressão regular (o 1º grupo entre parênteses vira o nome do grupo)</label><input type="text" id="rx" class="mono" value="CEP:\s*(\d{5})" spellcheck="false"></div>
+      <p class="hint" style="flex-basis:100%">Busca no texto da página inteira, sem diferenciar maiúsculas. Ex.: <code>CEP:\s*(\d{5})</code> agrupa pelo início do CEP.</p>
+      <div class="err" id="rxerr" hidden></div>
+    </div>
+
+    <div class="custom">
+      <div class="field"><label for="unmatched">Página onde a informação não for encontrada</label>
+        <select id="unmatched"><option value="group">Colocar no grupo “Sem identificação”</option><option value="prev">Juntar ao boleto anterior (boletos com 2+ páginas)</option></select></div>
+    </div>
+  </section>
+
+  <section class="panel" aria-labelledby="h-res">
+    <h2 id="h-res">3. Resultado</h2>
+    <div id="res-empty">
+      <p class="hint" style="margin-bottom:10px">Depois de escolher o arquivo, os grupos aparecem aqui. Exemplo de como fica:</p>
+      <div class="tablebox example"><table><thead><tr><th>Grupo</th><th>Páginas</th><th style="text-align:right">Qtd.</th></tr></thead><tbody>
+        <tr><td>Cidade Exemplo A - SP<span class="tag">exemplo</span></td><td class="pages">1, 4, 9</td><td class="n">3</td></tr>
+        <tr><td>Cidade Exemplo B - SP<span class="tag">exemplo</span></td><td class="pages">2, 3</td><td class="n">2</td></tr>
+      </tbody></table></div>
+    </div>
+    <div id="res" hidden>
+      <div class="summary">
+        <div class="stat"><b id="s-groups">0</b><span>grupos</span></div>
+        <div class="stat"><b id="s-pages">0</b><span>páginas</span></div>
+        <div class="stat"><b id="s-miss">0</b><span>sem identificação</span></div>
+        <div class="actions"><button class="primary" id="zipbtn">Baixar tudo (.zip)</button></div>
+      </div>
+      <div class="alert" id="missalert" hidden></div>
+      <div class="err" id="dlerr" hidden></div>
+      <div class="tablebox"><table>
+        <thead><tr><th data-sort="name">Grupo ↕</th><th>Páginas</th><th data-sort="count" style="text-align:right">Qtd. ↕</th><th></th></tr></thead>
+        <tbody id="tbody"></tbody>
+      </table></div>
+
+      <details id="viewer">
+        <summary>Ver o texto de uma página</summary>
+        <div class="viewer">
+          <div class="custom">
+            <div class="field small"><label for="vpage">Página</label><input type="number" id="vpage" min="1" value="1"></div>
+            <p class="hint" style="flex:1 1 240px">É assim que o programa “enxerga” a página. Clique numa linha para usá-la como rótulo no modo “Linha abaixo de um texto”.</p>
+          </div>
+          <div class="lines" id="vlines"></div>
+        </div>
+      </details>
+    </div>
+  </section>
+  </div>
+
+  <div class="tabpane" id="tab-join" role="tabpanel" aria-labelledby="tabbtn-join" hidden>
+    <p class="hint" style="margin:0">Escolha vários PDFs, deixe na ordem desejada e baixe um único PDF com todos eles.</p>
+
+    <section class="panel" aria-labelledby="h-j1">
+      <h2 id="h-j1">1. Arquivos</h2>
+      <div class="drop" id="jdrop">
+        <input type="file" id="jfile" accept="application/pdf,.pdf" multiple aria-label="Escolher arquivos PDF">
+        <strong>Arraste os PDFs aqui ou clique para escolher</strong>
+        <span>Pode selecionar vários de uma vez e adicionar mais depois</span>
+      </div>
+      <div class="err" id="jerr" hidden></div>
+    </section>
+
+    <section class="panel" aria-labelledby="h-j2">
+      <h2 id="h-j2">2. Ordem e resultado</h2>
+      <div id="jempty"><p class="hint">Nenhum arquivo adicionado ainda.</p></div>
+      <div id="jbox" hidden>
+        <div class="summary">
+          <div class="stat"><b id="j-files">0</b><span>arquivos</span></div>
+          <div class="stat"><b id="j-pages">0</b><span>páginas no total</span></div>
+          <div class="actions">
+            <button id="jsort">Ordenar por nome (A–Z)</button>
+            <button id="jclear">Limpar tudo</button>
+          </div>
+        </div>
+        <ol class="flist" id="jlist" style="margin-top:14px"></ol>
+        <div class="custom" style="margin-top:14px">
+          <div class="field"><label for="jname">Nome do arquivo final</label><input type="text" id="jname" value="PDFs unidos" spellcheck="false"></div>
+          <div class="actions"><button class="primary" id="jgo">Juntar e baixar (.pdf)</button></div>
+        </div>
+        <div class="err" id="jdlerr" hidden style="margin-top:10px"></div>
+      </div>
+    </section>
+  </div>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+(function(){
+  const $ = id => document.getElementById(id);
+  if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+  const state = { bytes:null, name:"", pages:[], groups:[], sort:"name" };
+
+  // ---------- preferências locais ----------
+  const PREF = "separador-boletos-prefs";
+  function savePrefs(){ try{ localStorage.setItem(PREF, JSON.stringify({
+    mode:getMode(), label:$("rot-label").value, off:$("rot-off").value, occ:$("rot-occ").value,
+    col:$("rot-col").checked, rx:$("rx").value, un:$("unmatched").value })); }catch(e){} }
+  function loadPrefs(){ try{ const p = JSON.parse(localStorage.getItem(PREF)||"null"); if(!p) return;
+    const r = document.querySelector(`input[name=mode][value="${p.mode}"]`); if(r) r.checked = true;
+    if(p.label!=null) $("rot-label").value=p.label; if(p.off!=null) $("rot-off").value=p.off;
+    if(p.occ) $("rot-occ").value=p.occ; if(p.col!=null) $("rot-col").checked=p.col;
+    if(p.rx) $("rx").value=p.rx; if(p.un) $("unmatched").value=p.un; }catch(e){} }
+
+  // ---------- leitura do PDF: reconstrói as linhas pela posição do texto ----------
+  function buildLines(items){
+    const rows = [];
+    for (const it of items){
+      if (!it.str || !it.str.trim()) continue;
+      const x = it.transform[4], y = it.transform[5];
+      let r = null;
+      for (const row of rows) if (Math.abs(row.y - y) < 2.5) { r = row; break; }
+      if (!r){ r = { y, items:[] }; rows.push(r); }
+      r.items.push({ x, w: it.width || 0, s: it.str });
+    }
+    rows.sort((a,b) => b.y - a.y);
+    return rows.map(r => {
+      r.items.sort((a,b) => a.x - b.x);
+      let out = "", end = null;
+      for (const i of r.items){
+        if (end !== null){ const gap = i.x - end; out += gap > 15 ? "   " : (gap > 1 ? " " : ""); }
+        out += i.s; end = i.x + i.w;
+      }
+      return out.replace(/\s+$/,"").replace(/^\s+/,"");
+    });
+  }
+
+  async function readPdf(file){
+    $("fileerr").hidden = true;
+    if (!window.pdfjsLib || !window.PDFLib || !window.JSZip){
+      return showFileErr("Não consegui carregar os componentes de leitura de PDF. Recarregue a página e tente de novo.");
+    }
+    state.name = file.name.replace(/\.pdf$/i,"");
+    state.bytes = new Uint8Array(await file.arrayBuffer());
+    $("fileinfo").hidden = false; $("fname").textContent = file.name;
+    $("fmeta").textContent = fmtSize(file.size) + " · lendo…";
+    $("prog").hidden = false; $("progbar").style.width = "0%";
+    try{
+      const doc = await pdfjsLib.getDocument({ data: state.bytes.slice() }).promise;
+      const pages = [];
+      for (let p = 1; p <= doc.numPages; p++){
+        const page = await doc.getPage(p);
+        const tc = await page.getTextContent();
+        pages.push(buildLines(tc.items));
+        page.cleanup();
+        if (p % 3 === 0 || p === doc.numPages){
+          $("progbar").style.width = (p / doc.numPages * 100).toFixed(1) + "%";
+          $("fmeta").textContent = `${fmtSize(file.size)} · lendo página ${p} de ${doc.numPages}`;
+          await new Promise(r => setTimeout(r, 0));
+        }
+      }
+      doc.destroy();
+      state.pages = pages;
+      $("fmeta").textContent = `${fmtSize(file.size)} · ${pages.length} páginas`;
+      $("prog").hidden = true;
+      const noText = pages.filter(l => l.length === 0).length;
+      if (noText === pages.length) showFileErr("Este PDF não tem texto selecionável (parece ser imagem escaneada). O programa só funciona com PDFs gerados pelo sistema/banco.");
+      $("vpage").max = pages.length;
+      regroup(); renderViewer();
+    }catch(e){
+      $("prog").hidden = true; $("fmeta").textContent = fmtSize(file.size);
+      showFileErr("Não consegui abrir este PDF. Ele pode estar protegido por senha ou corrompido. (" + (e && e.message || e) + ")");
+    }
+  }
+  function showFileErr(msg){ $("fileerr").textContent = msg; $("fileerr").hidden = false; }
+  function fmtSize(b){ return b > 1048576 ? (b/1048576).toFixed(1).replace(".",",")+" MB" : Math.round(b/1024)+" KB"; }
+
+  // ---------- regras de extração ----------
+  const RX_CITY = /\s-\s*([^-\/]+?)\s*\/\s*([A-Z]{2})$/;
+  const RX_PAG  = /^\d+\s+-\s+(.+?),\s*(CNPJ|CPF)/i;
+  const RX_DATE = /\d{2}\/\d{2}\/\d{4}/;
+  const clean = s => (s||"").replace(/\s+/g," ").trim();
+  function lastMatch(lines, rx){ let m=null; for (const l of lines){ const x = l.match(rx); if (x) m = x; } return m; }
+
+  function getMode(){ return document.querySelector("input[name=mode]:checked").value; }
+
+  function makeExtractor(){
+    const mode = getMode();
+    $("rxerr").hidden = true;
+    if (mode === "cidade") return L => { const m = lastMatch(L, RX_CITY); return m ? `${clean(m[1])} - ${m[2]}` : null; };
+    if (mode === "uf") return L => { const m = lastMatch(L, RX_CITY); return m ? m[2] : null; };
+    if (mode === "pagador") return L => { const m = lastMatch(L, RX_PAG); return m ? clean(m[1]) : null; };
+    if (mode === "vencimento") return L => {
+      for (let i = 0; i < L.length; i++) if (/vencimento/i.test(L[i])){
+        const same = L[i].replace(/.*vencimento/i,"").match(RX_DATE);
+        if (same) return same[0];
+        if (L[i+1]){ const m = L[i+1].match(RX_DATE); if (m) return m[0]; }
+      }
+      return null;
+    };
+    if (mode === "rotulo"){
+      const label = clean($("rot-label").value).toLowerCase();
+      const off = Math.max(0, Math.min(10, parseInt($("rot-off").value,10) || 0));
+      const last = $("rot-occ").value === "last", col = $("rot-col").checked;
+      if (!label) return () => null;
+      return L => {
+        let idx = -1;
+        for (let i = 0; i < L.length; i++) if (clean(L[i]).toLowerCase().includes(label)){ idx = i; if (!last) break; }
+        if (idx < 0) return null;
+        let line;
+        if (off === 0){ const raw = L[idx]; const pos = raw.toLowerCase().indexOf(label); line = pos >= 0 ? raw.slice(pos + label.length).replace(/^[\s:\-]+/,"") : raw; }
+        else line = L[idx + off];
+        if (!line) return null;
+        if (col) line = line.split(/\s{3,}/)[0];
+        return clean(line) || null;
+      };
+    }
+    if (mode === "regex"){
+      let rx;
+      try { rx = new RegExp($("rx").value, "im"); }
+      catch(e){ $("rxerr").textContent = "Expressão inválida: " + e.message; $("rxerr").hidden = false; return () => null; }
+      return L => { const m = L.join("\n").match(rx); if (!m) return null; return clean(m[1] !== undefined ? m[1] : m[0]) || null; };
+    }
+    return () => null;
+  }
+
+  const MISS = "Sem identificação";
+  function regroup(){
+    savePrefs();
+    $("opt-rotulo").hidden = getMode() !== "rotulo";
+    $("opt-regex").hidden = getMode() !== "regex";
+    if (!state.pages.length) return;
+    const ex = makeExtractor(), joinPrev = $("unmatched").value === "prev";
+    const map = new Map(); let miss = 0, prevKey = null;
+    state.pages.forEach((L, i) => {
+      let v = null; try { v = ex(L); } catch(e){ v = null; }
+      let key, name;
+      if (v){ key = v.toLocaleUpperCase("pt-BR"); name = v; }
+      else { miss++; if (joinPrev && prevKey){ key = prevKey; } else { key = "\u0000miss"; name = MISS; } }
+      if (!map.has(key)) map.set(key, { name, pages:[], miss: key === "\u0000miss" });
+      map.get(key).pages.push(i);
+      prevKey = key;
+    });
+    state.groups = [...map.values()];
+    state.miss = miss;
+    renderResult();
+  }
+
+  function sortedGroups(){
+    const g = state.groups.slice();
+    g.sort((a,b) => (a.miss - b.miss) || (state.sort === "count" ? b.pages.length - a.pages.length || a.name.localeCompare(b.name,"pt-BR") : a.name.localeCompare(b.name,"pt-BR",{sensitivity:"base"})));
+    return g;
+  }
+
+  function pagesLabel(p){
+    const n = p.map(i => i+1), out = [];
+    for (let i = 0; i < n.length; i++){
+      let j = i; while (j+1 < n.length && n[j+1] === n[j]+1) j++;
+      out.push(j > i+1 ? `${n[i]}–${n[j]}` : (j === i+1 ? `${n[i]}, ${n[j]}` : `${n[i]}`)); i = j;
+    }
+    return out.join(", ");
+  }
+
+  function renderResult(){
+    $("res-empty").hidden = true; $("res").hidden = false;
+    $("s-groups").textContent = state.groups.filter(g => !g.miss).length;
+    $("s-pages").textContent = state.pages.length;
+    $("s-miss").textContent = state.miss;
+    const joinPrev = $("unmatched").value === "prev";
+    if (state.miss){
+      $("missalert").hidden = false;
+      $("missalert").textContent = joinPrev
+        ? `${state.miss} página(s) sem a informação foram juntadas ao boleto anterior.`
+        : `${state.miss} página(s) não tinham a informação escolhida e foram para “${MISS}”. Use “Ver o texto de uma página” para conferir.`;
+    } else $("missalert").hidden = true;
+    const tb = $("tbody"); tb.textContent = "";
+    for (const g of sortedGroups()){
+      const tr = document.createElement("tr"); if (g.miss) tr.className = "unmatched";
+      const td1 = document.createElement("td"); td1.textContent = g.name;
+      const td2 = document.createElement("td"); td2.className = "pages"; td2.textContent = pagesLabel(g.pages);
+      const td3 = document.createElement("td"); td3.className = "n"; td3.textContent = g.pages.length;
+      const td4 = document.createElement("td"); td4.className = "act";
+      const b = document.createElement("button"); b.className = "link"; b.textContent = "Baixar PDF";
+      b.addEventListener("click", () => downloadOne(g, b));
+      td4.appendChild(b);
+      tr.append(td1, td2, td3, td4); tb.appendChild(tr);
+    }
+  }
+
+  // ---------- geração dos arquivos ----------
+  const safeName = s => (s.replace(/[\\\/:*?"<>|\u0000-\u001f]+/g,"-").replace(/\s+/g," ").trim().slice(0,120) || "grupo");
+  let srcDoc = null;
+  async function getSrc(){ if (!srcDoc) srcDoc = await PDFLib.PDFDocument.load(state.bytes, { ignoreEncryption:true }); return srcDoc; }
+  async function buildPdf(g){
+    const src = await getSrc(); const out = await PDFLib.PDFDocument.create();
+    const copied = await out.copyPages(src, g.pages); copied.forEach(p => out.addPage(p));
+    return out.save();
+  }
+  function csvSummary(){
+    const rows = [["Página","Grupo"]];
+    const byPage = []; state.groups.forEach(g => g.pages.forEach(i => byPage[i] = g.name));
+    byPage.forEach((n,i) => rows.push([i+1, n]));
+    return "\ufeff" + rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(";")).join("\r\n");
+  }
+  function modeSlug(){ return { cidade:"cidade", uf:"estado", pagador:"pagador", vencimento:"vencimento", rotulo:"rotulo", regex:"padrao" }[getMode()]; }
+
+  async function save(filename, data){
+    $("dlerr").hidden = true;
+    try {
+      const url = URL.createObjectURL(data);
+      const a = document.createElement("a");
+      a.href = url; a.download = filename; a.style.display = "none";
+      document.body.appendChild(a); a.click();
+      setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 4000);
+      toast("Download iniciado: " + filename);
+    } catch(e){
+      $("dlerr").textContent = "Não foi possível baixar: " + (e && (e.message || e.code) || e);
+      $("dlerr").hidden = false;
+    }
+  }
+  async function downloadOne(g, btn){
+    btn.disabled = true; const t = btn.textContent; btn.textContent = "Gerando…";
+    try { const bytes = await buildPdf(g); await save(safeName(g.name) + ".pdf", new Blob([bytes], {type:"application/pdf"})); }
+    catch(e){ $("dlerr").textContent = "Erro ao gerar o PDF: " + (e.message || e); $("dlerr").hidden = false; }
+    btn.disabled = false; btn.textContent = t;
+  }
+  $("zipbtn").addEventListener("click", async () => {
+    const btn = $("zipbtn"); btn.disabled = true;
+    try{
+      const zip = new JSZip(), used = new Set(), gs = sortedGroups();
+      for (let i = 0; i < gs.length; i++){
+        btn.textContent = `Gerando ${i+1} de ${gs.length}…`;
+        let fn = safeName(gs[i].name), k = 2; while (used.has(fn.toLowerCase())) fn = safeName(gs[i].name) + " (" + (k++) + ")";
+        used.add(fn.toLowerCase());
+        zip.file(fn + ".pdf", await buildPdf(gs[i]));
+        await new Promise(r => setTimeout(r, 0));
+      }
+      zip.file("resumo.csv", csvSummary());
+      btn.textContent = "Compactando…";
+      const blob = await zip.generateAsync({ type:"blob" });
+      await save(`${safeName(state.name)}_por_${modeSlug()}.zip`, blob);
+    }catch(e){ $("dlerr").textContent = "Erro ao gerar o ZIP: " + (e.message || e); $("dlerr").hidden = false; }
+    btn.disabled = false; btn.textContent = "Baixar tudo (.zip)";
+  });
+
+  // ---------- visualizador de texto ----------
+  function renderViewer(){
+    const box = $("vlines"); box.textContent = "";
+    const n = Math.max(1, Math.min(state.pages.length, parseInt($("vpage").value,10) || 1));
+    (state.pages[n-1] || []).forEach((l, i) => {
+      const d = document.createElement("div"); const em = document.createElement("em"); em.textContent = i+1;
+      d.append(em, document.createTextNode(l)); d.title = "Usar como rótulo";
+      d.addEventListener("click", () => {
+        $("m-rotulo").checked = true; $("rot-label").value = l.split(/\s{3,}/)[0].trim(); $("rot-off").value = 1;
+        regroup(); toast("Rótulo definido. Ajuste “Linhas abaixo” se precisar.");
+        $("h-regra").scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block:"start" });
+      });
+      box.appendChild(d);
+    });
+  }
+
+  let tt; function toast(m){ const t = $("toast"); t.textContent = m; t.hidden = false; clearTimeout(tt); tt = setTimeout(() => t.hidden = true, 3200); }
+
+  // ---------- eventos ----------
+  const drop = $("drop");
+  ["dragenter","dragover"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("over"); }));
+  ["dragleave","drop"].forEach(ev => drop.addEventListener(ev, () => drop.classList.remove("over")));
+  drop.addEventListener("drop", e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) { srcDoc = null; readPdf(f); } });
+  $("file").addEventListener("change", e => { const f = e.target.files[0]; if (f) { srcDoc = null; readPdf(f); } e.target.value = ""; });
+  document.querySelectorAll("input[name=mode]").forEach(r => r.addEventListener("change", regroup));
+  ["rot-label","rot-off","rx"].forEach(id => $(id).addEventListener("input", regroup));
+  ["rot-occ","rot-col","unmatched"].forEach(id => $(id).addEventListener("change", regroup));
+  $("vpage").addEventListener("input", renderViewer);
+  document.querySelectorAll("th[data-sort]").forEach(th => th.addEventListener("click", () => { state.sort = th.dataset.sort; renderResult(); }));
+
+  // ---------- abas ----------
+  function showTab(t){
+    ["sep","join"].forEach(k => {
+      $("tab-"+k).hidden = k !== t;
+      $("tabbtn-"+k).setAttribute("aria-selected", k === t ? "true" : "false");
+    });
+  }
+  $("tabbtn-sep").addEventListener("click", () => showTab("sep"));
+  $("tabbtn-join").addEventListener("click", () => showTab("join"));
+
+  // ---------- juntar PDFs ----------
+  const jfiles = []; let jid = 0;
+  const jcollator = new Intl.Collator("pt-BR", { numeric:true, sensitivity:"base" });
+  function jerr(msg){ $("jerr").textContent = msg; $("jerr").hidden = !msg; }
+  async function addJoinFiles(list){
+    jerr("");
+    const bad = [];
+    for (const f of Array.from(list)){
+      if (!/\.pdf$/i.test(f.name) && f.type !== "application/pdf"){ bad.push(f.name + " (não é PDF)"); continue; }
+      try {
+        const bytes = new Uint8Array(await f.arrayBuffer());
+        const d = await PDFLib.PDFDocument.load(bytes);
+        jfiles.push({ id: ++jid, name: f.name, size: f.size, bytes, pages: d.getPageCount() });
+      } catch(e){
+        bad.push(f.name + (/encrypt/i.test(e && e.message || "") ? " (protegido por senha)" : " (não consegui abrir)"));
+      }
+    }
+    if (bad.length) jerr("Estes arquivos não foram adicionados: " + bad.join("; "));
+    jrender();
+  }
+  function jrender(){
+    $("jempty").hidden = jfiles.length > 0; $("jbox").hidden = jfiles.length === 0;
+    $("j-files").textContent = jfiles.length;
+    $("j-pages").textContent = jfiles.reduce((a,f) => a + f.pages, 0);
+    const ol = $("jlist"); ol.textContent = "";
+    jfiles.forEach((f, i) => {
+      const li = document.createElement("li");
+      const mk = (cls, txt) => { const e = document.createElement("span"); e.className = cls; e.textContent = txt; return e; };
+      li.append(mk("idx", i+1), mk("nm", f.name), mk("mt", f.pages + (f.pages === 1 ? " pág." : " págs.") + " · " + fmtSize(f.size)));
+      const ctl = document.createElement("span"); ctl.className = "ctl";
+      const btn = (txt, label, fn, dis) => { const b = document.createElement("button"); b.textContent = txt; b.title = label; b.setAttribute("aria-label", label); b.disabled = !!dis; b.addEventListener("click", fn); return b; };
+      ctl.append(
+        btn("↑", "Subir", () => jmove(i, -1), i === 0),
+        btn("↓", "Descer", () => jmove(i, 1), i === jfiles.length - 1),
+        btn("✕", "Remover", () => { jfiles.splice(i, 1); jrender(); })
+      );
+      li.appendChild(ctl); ol.appendChild(li);
+    });
+  }
+  function jmove(i, d){ const j = i + d; if (j < 0 || j >= jfiles.length) return; [jfiles[i], jfiles[j]] = [jfiles[j], jfiles[i]]; jrender(); }
+  const jdrop = $("jdrop");
+  ["dragenter","dragover"].forEach(ev => jdrop.addEventListener(ev, e => { e.preventDefault(); jdrop.classList.add("over"); }));
+  ["dragleave","drop"].forEach(ev => jdrop.addEventListener(ev, () => jdrop.classList.remove("over")));
+  jdrop.addEventListener("drop", e => { e.preventDefault(); addJoinFiles(e.dataTransfer.files); });
+  $("jfile").addEventListener("change", e => { addJoinFiles(e.target.files); e.target.value = ""; });
+  $("jsort").addEventListener("click", () => { jfiles.sort((a,b) => jcollator.compare(a.name, b.name)); jrender(); });
+  $("jclear").addEventListener("click", () => { jfiles.length = 0; jerr(""); $("jdlerr").hidden = true; jrender(); });
+  $("jgo").addEventListener("click", async () => {
+    const btn = $("jgo"); btn.disabled = true; $("jdlerr").hidden = true;
+    try {
+      const out = await PDFLib.PDFDocument.create();
+      for (let i = 0; i < jfiles.length; i++){
+        btn.textContent = `Juntando ${i+1} de ${jfiles.length}…`;
+        const src = await PDFLib.PDFDocument.load(jfiles[i].bytes);
+        const pgs = await out.copyPages(src, src.getPageIndices());
+        pgs.forEach(p => out.addPage(p));
+        await new Promise(r => setTimeout(r, 0));
+      }
+      btn.textContent = "Salvando…";
+      const bytes = await out.save();
+      await save((safeName($("jname").value.replace(/\.pdf$/i, "") || "PDFs unidos")) + ".pdf", new Blob([bytes], { type:"application/pdf" }));
+    } catch(e){
+      $("jdlerr").textContent = "Erro ao juntar os PDFs: " + (e && e.message || e); $("jdlerr").hidden = false;
+    }
+    btn.disabled = false; btn.textContent = "Juntar e baixar (.pdf)";
+  });
+  jrender();
+
+  loadPrefs(); regroup();
+})();
+</script>
+
+</body>
+</html>

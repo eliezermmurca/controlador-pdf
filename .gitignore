@@ -1,0 +1,9 @@
+# Nunca versionar arquivos reais processados
+*.pdf
+*.zip
+*.csv
+
+# Sistema
+Thumbs.db
+desktop.ini
+.DS_Store
